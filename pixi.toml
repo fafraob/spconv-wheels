@@ -1,0 +1,40 @@
+[workspace]
+name = "spconv-cu128-wheels"
+description = "Build native CUDA 12.8 spconv/cumm wheels (incl. Blackwell sm_120)"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+# Toolchain comes entirely from conda-forge — no system CUDA, no root, no GPU.
+[dependencies]
+cuda-toolkit = "12.8.*"
+cxx-compiler = "*"
+cmake = "*"
+ninja = "*"
+git = "*"
+pip = "*"
+
+# Build-time python deps, pinned to the versions the wheels were verified with.
+[pypi-dependencies]
+pccm = "==0.4.16"
+ccimport = "==0.4.4"
+setuptools = "*"
+wheel = "*"
+numpy = "*"
+
+[feature.py310.dependencies]
+python = "3.10.*"
+
+[feature.py311.dependencies]
+python = "3.11.*"
+
+[feature.py312.dependencies]
+python = "3.12.*"
+
+[feature.py313.dependencies]
+python = "3.13.*"
+
+[environments]
+py310 = ["py310"]
+py311 = ["py311"]
+py312 = ["py312"]
+py313 = ["py313"]

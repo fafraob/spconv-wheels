@@ -1,0 +1,13 @@
+spconv-cu128-wheels
+Build scripts and CI for producing CUDA 12.8 wheels of upstream projects:
+
+- spconv (https://github.com/traveller59/spconv), Copyright Yan Yan and
+  contributors, licensed under the Apache License 2.0.
+- cumm (https://github.com/FindDefinition/cumm), Copyright Yan Yan and
+  contributors, licensed under the Apache License 2.0.
+
+The released wheels are built from unmodified upstream sources at the tags
+named in build.sh, except for one dependency-pin change in spconv's setup.py
+(cumm upper bound lifted from <0.8.0 to <0.9.0), applied by build.sh.
+
+This project is not affiliated with or endorsed by the upstream projects.

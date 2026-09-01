@@ -1,0 +1,4 @@
+# built wheels are attached to GitHub Releases, not committed
+dist/
+# pixi environments
+.pixi/
