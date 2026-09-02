@@ -5,11 +5,13 @@ Prebuilt [spconv](https://github.com/traveller59/spconv) v2.3.8 +
 **CUDA 12.8 (`cu128`) and CUDA 13.0 (`cu130`)** for **sm_80, sm_86, sm_89,
 sm_90, sm_100 and sm_120** (+ PTX for future architectures).
 
-Upstream's newest wheel is `spconv-cu126`: it has no native Blackwell kernels,
-and it cannot load next to today's default PyPI torch (a cu130 build). These
-wheels are the **unmodified upstream v2.3.8 code** — exactly what
-`pip install spconv-cu126` gives you — compiled for current CUDA and current
-GPUs, from a build you can reproduce in one command and whose portability is
+Upstream's newest wheel is `spconv-cu126`, which has no native Blackwell
+kernels (it runs on RTX 50-series only through the driver's PTX JIT, with a
+~12 s stall) and drags its own bundled CUDA 12.6 runtime into a process that
+already loads torch's. These wheels are the **unmodified upstream v2.3.8
+code** — exactly what `pip install spconv-cu126` gives you — compiled for
+current CUDA and current GPUs, using the CUDA libraries your torch already
+ships, from a build you can reproduce in one command and whose portability is
 gated in CI. Other community builds exist; see [Alternatives](#alternatives).
 
 **You want this if** you run spconv on an RTX 5060/5070/5080/5090, an RTX PRO
@@ -27,8 +29,9 @@ Linux x86_64, Python 3.10–3.13. **Pick the wheel flavor that matches your
 torch build's CUDA version** — the wheels bundle no CUDA libraries; they
 resolve `libcudart`/`libnvrtc` from the libraries your torch install loads
 into the process, so the sonames must match, and `import torch` must run
-before `import spconv`. torch cu121/cu124/cu126 builds work with neither
-flavor.
+before `import spconv`. Consequently *these* wheels do not work with torch
+cu121/cu124/cu126 builds (unlike upstream's PyPI wheels, which bundle their
+own CUDA runtime) — with such a torch, stay on `spconv-cu126`.
 
 ### cu130 — for the default PyPI torch (recommended)
 
@@ -88,10 +91,11 @@ Wheels are intentionally **not** published to PyPI — the `spconv-cu1xx` /
 - Cold start (first inference incl. kernel selection): **~0.6 s** vs ~12.4 s
   with spconv-cu126's PTX JIT on sm_120. Steady-state throughput is the same —
   the kernel algorithms are identical, only the JIT compile is removed.
-- Both flavors GPU-verified on sm_89 (RTX 4090, Ubuntu 22.04): `SubMConv3d`
-  output matches a dense `conv3d` reference to ~3e-07 (cu128 with torch
-  2.11+cu128; cu130 with plain-PyPI torch 2.14+cu130); fp32/fp16 pipelines
-  clean.
+- All 8 released wheel pairs (cu128 × cu130, Python 3.10–3.13) GPU-verified
+  on sm_89 (RTX 4090, Ubuntu 22.04), installed from the release URLs into
+  fresh venvs with the install commands above (torch 2.11+cu128 / plain-PyPI
+  torch 2.14+cu130): `SubMConv3d` and strided `SparseConv3d` match an fp64
+  dense `conv3d` reference to ~4e-07; fp16 forward and fp32 backward clean.
 - Every wheel is installed and imported in a clean Debian 12 container in CI
   (with the exact torch install commands above) before a release can publish.
 
@@ -113,9 +117,11 @@ wheels don't fit your setup:
 - [L-Reichardt/spconv-triton](https://github.com/L-Reichardt/spconv-triton) —
   an experimental Triton reimplementation, architecture-independent by
   construction.
-- `pip install spconv-cu126 cumm-cu126` with a torch **cu126/cu128** build does
-  run on Blackwell through the driver's PTX JIT — with the ~12 s cold start
-  described above, but it works.
+- Plain `pip install spconv-cu126` does still work — also next to a cu130
+  torch, because the upstream wheel bundles its own `libcudart`/`libnvrtc`
+  12.6 (verified on an RTX 4090 with torch 2.14+cu130). On Blackwell it runs
+  through the driver's PTX JIT, i.e. with the ~12 s cold start described
+  above, but it works.
 
 ## Build it yourself
 
