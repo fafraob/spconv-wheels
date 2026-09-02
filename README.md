@@ -37,12 +37,12 @@ gives you that — PyPI's default torch is now a CUDA 13 (cu130) build, which
 cannot load these wheels. Install torch explicitly from the cu128 index:
 
 ```bash
+python -m pip install -U pip   # old pips reject current typing_extensions wheels
 pip install --only-binary :all: torch --index-url https://download.pytorch.org/whl/cu128
 ```
 
-(`--only-binary` guards against the cu128 index occasionally serving a
-source distribution for one of torch's pure-python dependencies, which then
-fails to build against that index.)
+(`--only-binary` keeps pip from falling back to a source distribution of a
+torch dependency, which fails to build against the pytorch-only index.)
  The wheels do not link libtorch and do not
 bundle CUDA libraries; they resolve `libcudart`/`libnvrtc` **12.8** from the
 libraries your torch cu128 install loads into the process. Older torch CUDA
