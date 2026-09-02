@@ -1,5 +1,5 @@
 [workspace]
-name = "spconv-cu128-wheels"
+name = "spconv-wheels"
 description = "Build native CUDA 12.8/13.0 spconv/cumm wheels (incl. Blackwell sm_120)"
 channels = ["conda-forge"]
 platforms = ["linux-64"]

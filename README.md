@@ -1,11 +1,16 @@
-# spconv CUDA 12.8 / 13.0 wheels — native Blackwell (RTX 50-series, sm_120) support
+# spconv-wheels — prebuilt spconv for CUDA 12.8 / 13.0, native Blackwell (RTX 50-series, sm_120) support
 
 Prebuilt [spconv](https://github.com/traveller59/spconv) v2.3.8 +
 [cumm](https://github.com/FindDefinition/cumm) v0.8.2 wheels, compiled with
 **CUDA 12.8 (`cu128`) and CUDA 13.0 (`cu130`)** for **sm_80, sm_86, sm_89,
-sm_90, sm_100 and sm_120** (+ PTX for future architectures) — because no
-published spconv wheel supports Blackwell GPUs natively, and no published
-spconv wheel works with today's default PyPI torch (a cu130 build) at all.
+sm_90, sm_100 and sm_120** (+ PTX for future architectures).
+
+Upstream's newest wheel is `spconv-cu126`: it has no native Blackwell kernels,
+and it cannot load next to today's default PyPI torch (a cu130 build). These
+wheels are the **unmodified upstream v2.3.8 code** — exactly what
+`pip install spconv-cu126` gives you — compiled for current CUDA and current
+GPUs, from a build you can reproduce in one command and whose portability is
+gated in CI. Other community builds exist; see [Alternatives](#alternatives).
 
 **You want this if** you run spconv on an RTX 5060/5070/5080/5090, an RTX PRO
 Blackwell workstation card, or B100/B200/GB200, and you hit either:
@@ -32,8 +37,8 @@ Recent torch from PyPI (≥ 2.11) is a CUDA 13 build, so this just works:
 ```bash
 pip install torch
 pip install \
-  https://github.com/fafraob/spconv-cu128-wheels/releases/download/v2.3.8/cumm_cu130-0.8.2-cp311-cp311-linux_x86_64.whl \
-  https://github.com/fafraob/spconv-cu128-wheels/releases/download/v2.3.8/spconv_cu130-2.3.8-cp311-cp311-linux_x86_64.whl
+  https://github.com/fafraob/spconv-wheels/releases/download/v2.3.8/cumm_cu130-0.8.2-cp311-cp311-linux_x86_64.whl \
+  https://github.com/fafraob/spconv-wheels/releases/download/v2.3.8/spconv_cu130-2.3.8-cp311-cp311-linux_x86_64.whl
 ```
 
 ### cu128 — for torch +cu128 builds (torch 2.7–2.11 from the cu128 index)
@@ -42,8 +47,8 @@ pip install \
 python -m pip install -U pip   # old pips reject current typing_extensions wheels
 pip install --only-binary :all: torch --index-url https://download.pytorch.org/whl/cu128
 pip install \
-  https://github.com/fafraob/spconv-cu128-wheels/releases/download/v2.3.8/cumm_cu128-0.8.2-cp311-cp311-linux_x86_64.whl \
-  https://github.com/fafraob/spconv-cu128-wheels/releases/download/v2.3.8/spconv_cu128-2.3.8-cp311-cp311-linux_x86_64.whl
+  https://github.com/fafraob/spconv-wheels/releases/download/v2.3.8/cumm_cu128-0.8.2-cp311-cp311-linux_x86_64.whl \
+  https://github.com/fafraob/spconv-wheels/releases/download/v2.3.8/spconv_cu128-2.3.8-cp311-cp311-linux_x86_64.whl
 ```
 
 (`--only-binary` keeps pip from falling back to a source distribution of a
@@ -89,6 +94,28 @@ Wheels are intentionally **not** published to PyPI — the `spconv-cu1xx` /
   clean.
 - Every wheel is installed and imported in a clean Debian 12 container in CI
   (with the exact torch install commands above) before a release can publish.
+
+## Alternatives
+
+Other community routes to spconv on Blackwell / recent CUDA, in case these
+wheels don't fit your setup:
+
+- [rathaROG/cumm-spconv](https://ratharog.github.io/cumm-spconv/) — a pip
+  index of wheels built from rathaROG's **forks** of spconv (2.3.9–2.4.1) and
+  cumm (0.8.3–0.9.1), which carry additional fixes on top of upstream.
+  cu126/cu128/cu130, Linux **and Windows**, Python 3.9–3.14, manylinux_2_28;
+  the cu130 wheel contains native sm_120 kernels (checked with `cuobjdump`).
+  Pick it if you need Windows, Python 3.14 or the fork's fixes; pick this repo
+  if you want the unmodified upstream 2.3.8 code with an auditable build.
+- [RayYoh/spconv-12.8](https://github.com/RayYoh/spconv-12.8) and
+  [davidzha712/spconv-blackwell-cu128](https://github.com/davidzha712/spconv-blackwell-cu128)
+  — step-by-step guides for building from source for CUDA 12.8 / sm_120.
+- [L-Reichardt/spconv-triton](https://github.com/L-Reichardt/spconv-triton) —
+  an experimental Triton reimplementation, architecture-independent by
+  construction.
+- `pip install spconv-cu126 cumm-cu126` with a torch **cu126/cu128** build does
+  run on Blackwell through the driver's PTX JIT — with the ~12 s cold start
+  described above, but it works.
 
 ## Build it yourself
 
@@ -175,5 +202,5 @@ over the PTX-JIT path.
 [spconv](https://github.com/traveller59/spconv) and
 [cumm](https://github.com/FindDefinition/cumm) are © their authors, licensed
 under Apache-2.0. This repo (build scripts, CI, docs) is Apache-2.0 as well.
-Not affiliated with or endorsed by the upstream projects — upstream has been
-inactive since late 2024, which is the reason these wheels exist.
+Not affiliated with or endorsed by the upstream projects — upstream spconv has
+had no commits since December 2024, which is the reason these wheels exist.
