@@ -31,9 +31,14 @@ are a pybind11-matched pair: mixing this `spconv-cu128` with the `cumm-cu128`
 wheel from PyPI (or vice versa) fails at import time with
 `ImportError: ... type not registered yet?`.
 
-The wheels are independent of your PyTorch version (spconv does not link
-libtorch) — any torch build whose CUDA runtime supports your GPU works
-(for Blackwell: torch ≥ 2.7 cu128).
+**A torch cu128 build (torch ≥ 2.7 + cu128) is required**, and `import torch`
+must run before `import spconv`. The wheels do not link libtorch and do not
+bundle CUDA libraries; they resolve `libcudart`/`libnvrtc` **12.8** from the
+libraries your torch cu128 install loads into the process. Older torch CUDA
+builds (cu121/cu124/cu126) ship different library sonames and the import
+fails. For Blackwell you need torch cu128 anyway. Requires glibc ≥ 2.17 and
+Ubuntu 22.04+ / Debian 12+ era libstdc++ (GLIBCXX ≥ 3.4.30) — every wheel is
+install-tested in a clean Debian 12 container in CI before release.
 
 These are unmodified upstream sources at the release tags, except for one
 build-metadata change: spconv's `cumm<0.8.0` dependency pin is lifted to
@@ -91,6 +96,14 @@ failure modes, hit and solved here so you don't have to:
 4. **Always build from pristine clones.** Stale incremental pccm/ccimport
    build state from a previous run (or a different environment) produces
    broken `.so` files that import but miss symbols.
+5. **Pin the host compiler to gcc 12, and never trust an in-build-env import
+   test for portability.** The wheels bundle no libstdc++, so the newest
+   GLIBCXX symbol they reference sets the oldest system they run on: gcc 13/14
+   emit `GLIBCXX_3.4.31/32` references and the wheel then fails to import on
+   Ubuntu 22.04 (`GLIBCXX_3.4.32 not found`) — while importing fine inside the
+   build env, whose modern conda libstdc++ masks the problem. `build.sh` gates
+   every wheel on `readelf` symbol versions, and CI install-tests each wheel
+   in a clean Debian 12 container before a release can be published.
 
 Bonus, unrelated to building but easy to hit at runtime:
 

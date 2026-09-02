@@ -27,9 +27,61 @@ jobs:
           name: wheels-${{ matrix.env }}
           path: dist/*.whl
 
+  # Install the wheels exactly like an end user (clean container + pip torch
+  # cu128) on an OLD libstdc++ baseline. Debian bookworm ships gcc 12's
+  # libstdc++ (GLIBCXX <= 3.4.30), the same baseline as Ubuntu 22.04 — a wheel
+  # that imports here imports on 22.04. This job exists because the in-build
+  # smoke test runs inside the conda env, whose modern libstdc++ masks symbol
+  # portability problems (that bug shipped once). No GPU on runners, so this
+  # covers install + import + module construction; kernels are verified on
+  # real hardware before announcing.
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - env: py310
+            image: "python:3.10-slim-bookworm"
+          - env: py311
+            image: "python:3.11-slim-bookworm"
+          - env: py312
+            image: "python:3.12-slim-bookworm"
+          - env: py313
+            image: "python:3.13-slim-bookworm"
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: wheels-${{ matrix.env }}
+          path: dist
+      - name: Install torch cu128 + the wheels (user install path)
+        run: |
+          pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu128
+          pip install --no-cache-dir dist/cumm_cu128-*.whl dist/spconv_cu128-*.whl
+      - name: Import and construct (clean env, old libstdc++)
+        run: |
+          python - <<'EOF'
+          import torch  # must come first: provides libcudart/libnvrtc 12.8
+          import spconv.pytorch as spconv
+          import spconv as s
+          from spconv.core_cc.csrc.sparse.all import SpconvOps
+          net = spconv.SparseSequential(
+              spconv.SubMConv3d(16, 32, 3, padding=1, bias=False, indice_key="s1"),
+              spconv.SparseConv3d(32, 64, 3, stride=2, padding=1, bias=False),
+          )
+          x = spconv.SparseConvTensor(
+              torch.randn(100, 16),
+              torch.zeros(100, 4, dtype=torch.int32),
+              [64, 64, 64], 1,
+          )
+          print("spconv", s.__version__, "on torch", torch.__version__, "- clean-env import/construct OK")
+          EOF
+
   release:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: build
+    needs: [build, test]
     runs-on: ubuntu-latest
     permissions:
       contents: write

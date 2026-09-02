@@ -65,6 +65,37 @@ cp spconv/dist/spconv_cu128-*-"$PYTAG"-*.whl "$DIST_DIR/"
 echo "=== import smoke test ==="
 pip install --no-deps --force-reinstall spconv/dist/spconv_cu128-*-"$PYTAG"-*.whl
 (cd /tmp && python -c "from cumm.core_cc import tensorview_bind; import spconv.core_cc; print('wheel imports OK')")
+# NOTE: this import runs inside the build env, whose modern libstdc++ masks
+# symbol-version problems — it catches broken builds (missing kernels, pybind
+# mismatch), NOT portability. Portability is enforced by the gate below and
+# by the clean-container install test in CI.
+
+echo "=== portability gate (symbol versions) ==="
+# The wheels bundle no libstdc++/libc, so the newest symbol version they
+# reference sets the oldest system they run on. Enforce the Ubuntu 22.04
+# baseline: GLIBCXX <= 3.4.30 (libstdc++ of gcc 12) and GLIBC <= 2.17
+# (conda-forge sysroot). gcc 13/14 silently emit GLIBCXX_3.4.31/32 and the
+# wheel then fails to import on 22.04 — this is exactly what happened once.
+GATE_DIR="$WORK_DIR/gate"
+for whl in "$DIST_DIR"/cumm_cu128-*-"$PYTAG"-*.whl "$DIST_DIR"/spconv_cu128-*-"$PYTAG"-*.whl; do
+    rm -rf "$GATE_DIR"; mkdir -p "$GATE_DIR"
+    python -m zipfile -e "$whl" "$GATE_DIR"
+    mapfile -t sos < <(find "$GATE_DIR" -name 'core_cc*.so')
+    if [ "${#sos[@]}" -eq 0 ]; then
+        echo "FATAL: $(basename "$whl") contains no compiled core_cc extension (JIT-mode wheel?)"
+        exit 1
+    fi
+    for so in "${sos[@]}"; do
+        bad=$(readelf --dyn-syms -W "$so" | grep -oE 'GLIBCXX_3\.4\.(3[1-9]|[4-9][0-9])|GLIBC_2\.(1[8-9]|[2-9][0-9])' | sort -u || true)
+        if [ -n "$bad" ]; then
+            echo "FATAL: $(basename "$whl") requires symbols newer than the Ubuntu 22.04 baseline:"
+            echo "$bad"
+            echo "Rebuild with gcc 12 (see pixi.toml) — do NOT release this wheel."
+            exit 1
+        fi
+        echo "OK: $(basename "$so") in $(basename "$whl") — max $(readelf --dyn-syms -W "$so" | grep -oE 'GLIBCXX_[0-9.]+' | sort -uV | tail -1), $(readelf --dyn-syms -W "$so" | grep -oE 'GLIBC_2\.[0-9]+' | sort -uV | tail -1)"
+    done
+done
 
 echo "=== done ==="
 ls -lh "$DIST_DIR"/*"$PYTAG"*.whl

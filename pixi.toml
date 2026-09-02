@@ -5,9 +5,15 @@ channels = ["conda-forge"]
 platforms = ["linux-64"]
 
 # Toolchain comes entirely from conda-forge — no system CUDA, no root, no GPU.
+# gcc/gxx are pinned to 12: the wheels bundle no libstdc++, so the newest
+# GLIBCXX symbol they reference must exist on target systems. gcc 12 needs
+# GLIBCXX <= 3.4.30 (Ubuntu 22.04's baseline); gcc 13/14 emit 3.4.31/32
+# references and the wheels fail to import on 22.04. build.sh enforces this
+# with a readelf gate on every built wheel.
 [dependencies]
 cuda-toolkit = "12.8.*"
-cxx-compiler = "*"
+gcc = "12.*"
+gxx = "12.*"
 cmake = "*"
 ninja = "*"
 git = "*"
