@@ -57,14 +57,15 @@ jobs:
           name: wheels-${{ matrix.env }}
           path: dist
       - name: Install torch cu128 + the wheels (user install path)
-        # --only-binary + PyPI as extra index: torch's pure-python deps come
-        # from PyPI as wheels (the pytorch index can't build their sdists —
-        # broke once on py310), while torch itself still resolves to +cu128
-        # (local version sorts above PyPI's plain release).
+        # Same command the README gives users. cu128 index ONLY: adding PyPI
+        # as an extra index lets pip pick PyPI's newer plain torch, which is a
+        # cu130 build these wheels cannot load (+cu128 only outranks PyPI at
+        # the SAME version — bit us once). --only-binary: the index sometimes
+        # serves an sdist for a pure-python dep, which fails on its missing
+        # build backend (bit us once too, on py310/typing_extensions).
         run: |
           pip install --no-cache-dir --only-binary :all: torch \
-            --index-url https://download.pytorch.org/whl/cu128 \
-            --extra-index-url https://pypi.org/simple
+            --index-url https://download.pytorch.org/whl/cu128
           python -c "import torch; assert '+cu128' in torch.__version__, torch.__version__"
           pip install --no-cache-dir dist/cumm_cu128-*.whl dist/spconv_cu128-*.whl
       - name: Import and construct (clean env, old libstdc++)

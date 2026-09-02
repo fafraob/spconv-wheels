@@ -32,7 +32,18 @@ wheel from PyPI (or vice versa) fails at import time with
 `ImportError: ... type not registered yet?`.
 
 **A torch cu128 build (torch ≥ 2.7 + cu128) is required**, and `import torch`
-must run before `import spconv`. The wheels do not link libtorch and do not
+must run before `import spconv`. ⚠️ A plain `pip install torch` no longer
+gives you that — PyPI's default torch is now a CUDA 13 (cu130) build, which
+cannot load these wheels. Install torch explicitly from the cu128 index:
+
+```bash
+pip install --only-binary :all: torch --index-url https://download.pytorch.org/whl/cu128
+```
+
+(`--only-binary` guards against the cu128 index occasionally serving a
+source distribution for one of torch's pure-python dependencies, which then
+fails to build against that index.)
+ The wheels do not link libtorch and do not
 bundle CUDA libraries; they resolve `libcudart`/`libnvrtc` **12.8** from the
 libraries your torch cu128 install loads into the process. Older torch CUDA
 builds (cu121/cu124/cu126) ship different library sonames and the import
