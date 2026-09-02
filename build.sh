@@ -1,10 +1,12 @@
 #!/bin/bash
-# Build native spconv + cumm wheels for CUDA 12.8 (incl. Blackwell / sm_120).
+# Build native spconv + cumm wheels for CUDA 12.8 or 13.0 (incl. Blackwell /
+# sm_120).
 #
 # Run inside a pixi environment of this repo (toolchain fully from conda-forge,
 # reproducible on any linux-64 machine, no GPU required):
 #
-#   pixi run -e py311 bash build.sh      # or py310 / py312 / py313
+#   pixi run -e py311 bash build.sh          # CUDA 12.8, or py310/py312/py313
+#   pixi run -e py311-cu130 bash build.sh    # CUDA 13.0 (auto-detected)
 #
 # Wheels land in ./dist. See README.md for the failure modes this script
 # works around — the build order and flags below are all load-bearing.
@@ -14,12 +16,22 @@ set -euo pipefail
 CUMM_TAG="${CUMM_TAG:-v0.8.2}"     # commit 4c77b38d1ab57d5d1c157adddf67dad93f3a446b
 SPCONV_TAG="${SPCONV_TAG:-v2.3.8}" # commit 263d6b47425ef843c82f997b12d8b714013d216c
 
-export CUMM_CUDA_VERSION="${CUMM_CUDA_VERSION:-12.8}"
+# Default the CUDA version to the toolkit in the active pixi env, so the
+# py31x-cu130 envs build cu130 without extra flags.
+NVCC_VER="$(nvcc --version | grep -oE 'release [0-9]+\.[0-9]+' | cut -d' ' -f2)"
+export CUMM_CUDA_VERSION="${CUMM_CUDA_VERSION:-$NVCC_VER}"
+CU="cu${CUMM_CUDA_VERSION//./}"
 export CUMM_CUDA_ARCH_LIST="${CUMM_CUDA_ARCH_LIST:-8.0;8.6;8.9;9.0;10.0;12.0+PTX}"
 # AOT build: BOTH flags are required (cumm alone silently builds a pure-python
 # JIT wheel without its flag).
 export CUMM_DISABLE_JIT="1"
 export SPCONV_DISABLE_JIT="1"
+
+# Isolate from ~/.local: conda-style envs give user site-packages precedence
+# over the env, so a stale cumm/pccm there silently shadows the freshly built
+# one (symptom: spconv build fails with "Unknown CUDA arch" or similar from a
+# cumm version you didn't install).
+export PYTHONNOUSERSITE=1
 
 # Make nvcc use the conda-forge host compiler, not whatever /usr/bin has.
 export CUDA_HOME="$CONDA_PREFIX"
@@ -47,23 +59,31 @@ git clone --branch "$SPCONV_TAG" --depth 1 https://github.com/traveller59/spconv
 sed -i 's/cumm-cu{}>=0.7.11, <0.8.0/cumm-cu{}>=0.7.11, <0.9.0/' spconv/setup.py
 grep -q "cumm-cu{}>=0.7.11, <0.9.0" spconv/setup.py
 
+# CUDA 13: nvcc requires C++17, but cumm hardcodes c++14 on linux (this is
+# spconv issue #765; spconv's own setup.py already selects c++17 for
+# CUDA >= 11). The code is C++17-clean — cumm builds as c++17 on macOS.
+if [ "${CUMM_CUDA_VERSION%%.*}" -ge 13 ]; then
+    sed -i 's/std="c++17" if compat.InMacOS else "c++14",/std="c++17",/' cumm/setup.py
+    grep -q 'std="c++17",' cumm/setup.py
+fi
+
 # Build via setup.py directly, NOT `pip wheel`: under pip's build hooks the
 # source dir is not first on sys.path and pccm mis-derives the extension
 # namespaces (nested cumm.core_cc.cumm.* -> broken imports).
 echo "=== building cumm ($CUMM_TAG) ==="
 (cd cumm && python setup.py bdist_wheel)
-cp cumm/dist/cumm_cu128-*-"$PYTAG"-*.whl "$DIST_DIR/"
+cp cumm/dist/cumm_"$CU"-*-"$PYTAG"-*.whl "$DIST_DIR/"
 
 # spconv must be built against the cumm wheel we just made (the two extensions
 # are a pybind11-matched pair).
-pip install --no-deps --force-reinstall cumm/dist/cumm_cu128-*-"$PYTAG"-*.whl
+pip install --no-deps --force-reinstall cumm/dist/cumm_"$CU"-*-"$PYTAG"-*.whl
 
 echo "=== building spconv ($SPCONV_TAG) ==="
 (cd spconv && python setup.py bdist_wheel)
-cp spconv/dist/spconv_cu128-*-"$PYTAG"-*.whl "$DIST_DIR/"
+cp spconv/dist/spconv_"$CU"-*-"$PYTAG"-*.whl "$DIST_DIR/"
 
 echo "=== import smoke test ==="
-pip install --no-deps --force-reinstall spconv/dist/spconv_cu128-*-"$PYTAG"-*.whl
+pip install --no-deps --force-reinstall spconv/dist/spconv_"$CU"-*-"$PYTAG"-*.whl
 (cd /tmp && python -c "from cumm.core_cc import tensorview_bind; import spconv.core_cc; print('wheel imports OK')")
 # NOTE: this import runs inside the build env, whose modern libstdc++ masks
 # symbol-version problems — it catches broken builds (missing kernels, pybind
@@ -77,7 +97,7 @@ echo "=== portability gate (symbol versions) ==="
 # (conda-forge sysroot). gcc 13/14 silently emit GLIBCXX_3.4.31/32 and the
 # wheel then fails to import on 22.04 — this is exactly what happened once.
 GATE_DIR="$WORK_DIR/gate"
-for whl in "$DIST_DIR"/cumm_cu128-*-"$PYTAG"-*.whl "$DIST_DIR"/spconv_cu128-*-"$PYTAG"-*.whl; do
+for whl in "$DIST_DIR"/cumm_"$CU"-*-"$PYTAG"-*.whl "$DIST_DIR"/spconv_"$CU"-*-"$PYTAG"-*.whl; do
     rm -rf "$GATE_DIR"; mkdir -p "$GATE_DIR"
     python -m zipfile -e "$whl" "$GATE_DIR"
     mapfile -t sos < <(find "$GATE_DIR" -name 'core_cc*.so')
@@ -98,4 +118,4 @@ for whl in "$DIST_DIR"/cumm_cu128-*-"$PYTAG"-*.whl "$DIST_DIR"/spconv_cu128-*-"$
 done
 
 echo "=== done ==="
-ls -lh "$DIST_DIR"/*"$PYTAG"*.whl
+ls -lh "$DIST_DIR"/*_"$CU"-*"$PYTAG"*.whl

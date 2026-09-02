@@ -1,10 +1,11 @@
-# spconv CUDA 12.8 wheels — native Blackwell (RTX 50-series, sm_120) support
+# spconv CUDA 12.8 / 13.0 wheels — native Blackwell (RTX 50-series, sm_120) support
 
 Prebuilt [spconv](https://github.com/traveller59/spconv) v2.3.8 +
 [cumm](https://github.com/FindDefinition/cumm) v0.8.2 wheels, compiled with
-CUDA 12.8 for **sm_80, sm_86, sm_89, sm_90, sm_100 and sm_120** (+ PTX for
-future architectures) — because no published spconv wheel supports Blackwell
-GPUs natively.
+**CUDA 12.8 (`cu128`) and CUDA 13.0 (`cu130`)** for **sm_80, sm_86, sm_89,
+sm_90, sm_100 and sm_120** (+ PTX for future architectures) — because no
+published spconv wheel supports Blackwell GPUs natively, and no published
+spconv wheel works with today's default PyPI torch (a cu130 build) at all.
 
 **You want this if** you run spconv on an RTX 5060/5070/5080/5090, an RTX PRO
 Blackwell workstation card, or B100/B200/GB200, and you hit either:
@@ -17,44 +18,59 @@ Blackwell workstation card, or B100/B200/GB200, and you hit either:
 
 ## Install
 
-Linux x86_64, Python 3.10–3.13. Pick the wheels for your Python version from
-the [releases page](../../releases), then (example for cp311):
+Linux x86_64, Python 3.10–3.13. **Pick the wheel flavor that matches your
+torch build's CUDA version** — the wheels bundle no CUDA libraries; they
+resolve `libcudart`/`libnvrtc` from the libraries your torch install loads
+into the process, so the sonames must match, and `import torch` must run
+before `import spconv`. torch cu121/cu124/cu126 builds work with neither
+flavor.
+
+### cu130 — for the default PyPI torch (recommended)
+
+Recent torch from PyPI (≥ 2.11) is a CUDA 13 build, so this just works:
 
 ```bash
+pip install torch
+pip install \
+  https://github.com/fafraob/spconv-cu128-wheels/releases/download/v2.3.8/cumm_cu130-0.8.2-cp311-cp311-linux_x86_64.whl \
+  https://github.com/fafraob/spconv-cu128-wheels/releases/download/v2.3.8/spconv_cu130-2.3.8-cp311-cp311-linux_x86_64.whl
+```
+
+### cu128 — for torch +cu128 builds (torch 2.7–2.11 from the cu128 index)
+
+```bash
+python -m pip install -U pip   # old pips reject current typing_extensions wheels
+pip install --only-binary :all: torch --index-url https://download.pytorch.org/whl/cu128
 pip install \
   https://github.com/fafraob/spconv-cu128-wheels/releases/download/v2.3.8/cumm_cu128-0.8.2-cp311-cp311-linux_x86_64.whl \
   https://github.com/fafraob/spconv-cu128-wheels/releases/download/v2.3.8/spconv_cu128-2.3.8-cp311-cp311-linux_x86_64.whl
 ```
 
-⚠️ **Install both wheels together, exactly as released.** The two extensions
-are a pybind11-matched pair: mixing this `spconv-cu128` with the `cumm-cu128`
-wheel from PyPI (or vice versa) fails at import time with
-`ImportError: ... type not registered yet?`.
-
-**A torch cu128 build (torch ≥ 2.7 + cu128) is required**, and `import torch`
-must run before `import spconv`. ⚠️ A plain `pip install torch` no longer
-gives you that — PyPI's default torch is now a CUDA 13 (cu130) build, which
-cannot load these wheels. Install torch explicitly from the cu128 index:
-
-```bash
-python -m pip install -U pip   # old pips reject current typing_extensions wheels
-pip install --only-binary :all: torch --index-url https://download.pytorch.org/whl/cu128
-```
-
 (`--only-binary` keeps pip from falling back to a source distribution of a
 torch dependency, which fails to build against the pytorch-only index.)
- The wheels do not link libtorch and do not
-bundle CUDA libraries; they resolve `libcudart`/`libnvrtc` **12.8** from the
-libraries your torch cu128 install loads into the process. Older torch CUDA
-builds (cu121/cu124/cu126) ship different library sonames and the import
-fails. For Blackwell you need torch cu128 anyway. Requires glibc ≥ 2.17 and
-Ubuntu 22.04+ / Debian 12+ era libstdc++ (GLIBCXX ≥ 3.4.30) — every wheel is
-install-tested in a clean Debian 12 container in CI before release.
 
-These are unmodified upstream sources at the release tags, except for one
-build-metadata change: spconv's `cumm<0.8.0` dependency pin is lifted to
-`<0.9.0` (cumm 0.8.x is 0.7.13 plus CUDA 12.8/Blackwell arch support — no API
-change, see the [cumm changelog](https://github.com/FindDefinition/cumm/blob/main/CHANGELOG.md)).
+Swap `cp311` for your Python version — all wheels are on the
+[releases page](../../releases).
+
+⚠️ **Install both wheels of one flavor together, exactly as released.** The
+two extensions are a pybind11-matched pair: mixing this `spconv-cu1xx` with
+the `cumm-cu1xx` wheel from PyPI (or vice versa) fails at import time with
+`ImportError: ... type not registered yet?`.
+
+Requires glibc ≥ 2.17 and Ubuntu 22.04+ / Debian 12+ era libstdc++
+(GLIBCXX ≥ 3.4.30) — every wheel is install-tested in a clean Debian 12
+container in CI before release.
+
+These are unmodified upstream sources at the release tags, except for two
+build-level changes (no code changes): spconv's `cumm<0.8.0` dependency pin
+is lifted to `<0.9.0` (cumm 0.8.x is 0.7.13 plus CUDA 12.8/Blackwell arch
+support — no API change, see the
+[cumm changelog](https://github.com/FindDefinition/cumm/blob/main/CHANGELOG.md)),
+and for the cu130 flavor cumm's hardcoded `-std=c++14` is raised to `c++17`
+(nvcc 13 requires ≥ C++17; this is
+[spconv#765](https://github.com/traveller59/spconv/issues/765) — the code is
+already C++17-clean, upstream builds it as C++17 on macOS and spconv selects
+C++17 itself for CUDA ≥ 11).
 Wheels are intentionally **not** published to PyPI — the `spconv-cu1xx` /
 `cumm-cu1xx` names belong to the upstream maintainers.
 
@@ -67,19 +83,28 @@ Wheels are intentionally **not** published to PyPI — the `spconv-cu1xx` /
 - Cold start (first inference incl. kernel selection): **~0.6 s** vs ~12.4 s
   with spconv-cu126's PTX JIT on sm_120. Steady-state throughput is the same —
   the kernel algorithms are identical, only the JIT compile is removed.
+- Both flavors GPU-verified on sm_89 (RTX 4090, Ubuntu 22.04): `SubMConv3d`
+  output matches a dense `conv3d` reference to ~3e-07 (cu128 with torch
+  2.11+cu128; cu130 with plain-PyPI torch 2.14+cu130); fp32/fp16 pipelines
+  clean.
+- Every wheel is installed and imported in a clean Debian 12 container in CI
+  (with the exact torch install commands above) before a release can publish.
 
 ## Build it yourself
 
 Everything is reproducible with [pixi](https://pixi.sh) — the whole toolchain
-(nvcc 12.8, gcc 14, cmake/ninja) comes from conda-forge, no system CUDA, no
-docker, no root, no GPU needed at build time:
+(nvcc 12.8 or 13.0, gcc 12, cmake/ninja) comes from conda-forge, no system
+CUDA, no docker, no root, no GPU needed at build time:
 
 ```bash
-pixi run -e py311 bash build.sh     # ~30-60 min; wheels land in dist/
+pixi run -e py311 bash build.sh           # cu128; or py310 / py312 / py313
+pixi run -e py311-cu130 bash build.sh     # cu130 (CUDA version auto-detected)
 ```
 
-Or trigger the GitHub Actions workflow (`.github/workflows/build.yml`), which
-builds the full Python matrix and attaches the wheels to a release on tags.
+~30–60 min each; wheels land in `dist/`. Or trigger the GitHub Actions
+workflow (`.github/workflows/build.yml`), which builds the full
+Python × CUDA matrix, install-tests every wheel in a clean container, and
+attaches the wheels to a release on tags.
 
 Arch list, CUDA version and source tags are overridable via env vars
 (`CUMM_CUDA_ARCH_LIST`, `CUMM_CUDA_VERSION`, `CUMM_TAG`, `SPCONV_TAG`) — see
@@ -115,6 +140,16 @@ failure modes, hit and solved here so you don't have to:
    build env, whose modern conda libstdc++ masks the problem. `build.sh` gates
    every wheel on `readelf` symbol versions, and CI install-tests each wheel
    in a clean Debian 12 container before a release can be published.
+6. **CUDA 13 needs one flag: raise cumm's hardcoded `-std=c++14` to `c++17`.**
+   nvcc 13 requires ≥ C++17 and the build otherwise dies immediately
+   ([spconv#765](https://github.com/traveller59/spconv/issues/765)). The code
+   is already C++17-clean — with that one change, all 775 kernels compile
+   under CUDA 13.0 unmodified.
+7. **Export `PYTHONNOUSERSITE=1` when building in a conda-style env.** User
+   site-packages (`~/.local`) take precedence over the env's, so a stale
+   cumm/pccm there silently shadows the freshly built one — the spconv build
+   then fails against the wrong cumm (e.g. `Unknown CUDA arch (10.0)` from an
+   old cumm that predates Blackwell).
 
 Bonus, unrelated to building but easy to hit at runtime:
 

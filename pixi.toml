@@ -1,6 +1,6 @@
 [workspace]
 name = "spconv-cu128-wheels"
-description = "Build native CUDA 12.8 spconv/cumm wheels (incl. Blackwell sm_120)"
+description = "Build native CUDA 12.8/13.0 spconv/cumm wheels (incl. Blackwell sm_120)"
 channels = ["conda-forge"]
 platforms = ["linux-64"]
 
@@ -11,7 +11,6 @@ platforms = ["linux-64"]
 # references and the wheels fail to import on 22.04. build.sh enforces this
 # with a readelf gate on every built wheel.
 [dependencies]
-cuda-toolkit = "12.8.*"
 gcc = "12.*"
 gxx = "12.*"
 cmake = "*"
@@ -27,6 +26,21 @@ setuptools = "*"
 wheel = "*"
 numpy = "*"
 
+# CUDA toolkit minor versions match the runtime libs the corresponding torch
+# builds ship (the wheels resolve libcudart/libnvrtc sonames from torch's
+# bundled NVIDIA libraries at import time).
+[feature.cu128.dependencies]
+cuda-toolkit = "12.8.*"
+
+# Not the cuda-toolkit metapackage: it drags in cuda-gdb, whose conda-forge
+# builds are per-python and missing for some versions, breaking the solve.
+# compiler + libraries-dev is everything a build needs, nothing py-specific.
+[feature.cu130.dependencies]
+cuda-compiler = "13.0.*"
+cuda-libraries-dev = "13.0.*"
+cuda-cudart-static = "13.0.*"
+cuda-cccl = "*"
+
 [feature.py310.dependencies]
 python = "3.10.*"
 
@@ -40,7 +54,11 @@ python = "3.12.*"
 python = "3.13.*"
 
 [environments]
-py310 = ["py310"]
-py311 = ["py311"]
-py312 = ["py312"]
-py313 = ["py313"]
+py310 = ["py310", "cu128"]
+py311 = ["py311", "cu128"]
+py312 = ["py312", "cu128"]
+py313 = ["py313", "cu128"]
+py310-cu130 = ["py310", "cu130"]
+py311-cu130 = ["py311", "cu130"]
+py312-cu130 = ["py312", "cu130"]
+py313-cu130 = ["py313", "cu130"]

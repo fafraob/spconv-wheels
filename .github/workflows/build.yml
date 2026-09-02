@@ -11,7 +11,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        env: [py310, py311, py312, py313]
+        env:
+          - py310
+          - py311
+          - py312
+          - py313
+          - py310-cu130
+          - py311-cu130
+          - py312-cu130
+          - py313-cu130
     steps:
       - uses: actions/checkout@v4
       # cuda-toolkit + the build need room; runners start ~14GB free
@@ -27,14 +35,23 @@ jobs:
           name: wheels-${{ matrix.env }}
           path: dist/*.whl
 
-  # Install the wheels exactly like an end user (clean container + pip torch
-  # cu128) on an OLD libstdc++ baseline. Debian bookworm ships gcc 12's
-  # libstdc++ (GLIBCXX <= 3.4.30), the same baseline as Ubuntu 22.04 — a wheel
-  # that imports here imports on 22.04. This job exists because the in-build
-  # smoke test runs inside the conda env, whose modern libstdc++ masks symbol
+  # Install the wheels exactly like an end user (clean container + pip torch)
+  # on an OLD libstdc++ baseline. Debian bookworm ships gcc 12's libstdc++
+  # (GLIBCXX <= 3.4.30), the same baseline as Ubuntu 22.04 — a wheel that
+  # imports here imports on 22.04. This job exists because the in-build smoke
+  # test runs inside the conda env, whose modern libstdc++ masks symbol
   # portability problems (that bug shipped once). No GPU on runners, so this
   # covers install + import + module construction; kernels are verified on
   # real hardware before announcing.
+  #
+  # torch install per CUDA flavor (same commands the README gives users):
+  # - cu128: cu128 index ONLY (PyPI's plain torch is a cu13x build these
+  #   wheels cannot load, and it outranks the index's +cu128 releases), with
+  #   --only-binary (the index sometimes serves unbuildable sdists for pure
+  #   python deps). Upgrade pip first: old pips discard current
+  #   typing_extensions wheels over the underscore/dash Name mismatch.
+  # - cu130: plain PyPI torch — the default is a cu130 build; that's the point
+  #   of shipping cu130 wheels.
   test:
     needs: build
     runs-on: ubuntu-latest
@@ -42,39 +59,30 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - env: py310
-            image: "python:3.10-slim-bookworm"
-          - env: py311
-            image: "python:3.11-slim-bookworm"
-          - env: py312
-            image: "python:3.12-slim-bookworm"
-          - env: py313
-            image: "python:3.13-slim-bookworm"
+          - { env: py310, image: "python:3.10-slim-bookworm", pipargs: "--index-url https://download.pytorch.org/whl/cu128", wantcuda: "12.8" }
+          - { env: py311, image: "python:3.11-slim-bookworm", pipargs: "--index-url https://download.pytorch.org/whl/cu128", wantcuda: "12.8" }
+          - { env: py312, image: "python:3.12-slim-bookworm", pipargs: "--index-url https://download.pytorch.org/whl/cu128", wantcuda: "12.8" }
+          - { env: py313, image: "python:3.13-slim-bookworm", pipargs: "--index-url https://download.pytorch.org/whl/cu128", wantcuda: "12.8" }
+          - { env: py310-cu130, image: "python:3.10-slim-bookworm", pipargs: "", wantcuda: "13." }
+          - { env: py311-cu130, image: "python:3.11-slim-bookworm", pipargs: "", wantcuda: "13." }
+          - { env: py312-cu130, image: "python:3.12-slim-bookworm", pipargs: "", wantcuda: "13." }
+          - { env: py313-cu130, image: "python:3.13-slim-bookworm", pipargs: "", wantcuda: "13." }
     container: ${{ matrix.image }}
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: wheels-${{ matrix.env }}
           path: dist
-      - name: Install torch cu128 + the wheels (user install path)
-        # Same commands the README gives users. Upgrade pip first: old pips
-        # discard current typing_extensions wheels over the underscore/dash
-        # metadata Name mismatch (bit us twice on py310, whose image ships an
-        # old pip). cu128 index ONLY: adding PyPI as an extra index lets pip
-        # pick PyPI's newer plain torch, which is a cu130 build these wheels
-        # cannot load (+cu128 only outranks PyPI at the SAME version — bit us
-        # once). --only-binary: never fall back to an sdist the pytorch index
-        # cannot provide build backends for.
+      - name: Install torch + the wheels (user install path)
         run: |
           python -m pip install --no-cache-dir -U pip
-          pip install --no-cache-dir --only-binary :all: torch \
-            --index-url https://download.pytorch.org/whl/cu128
-          python -c "import torch; assert '+cu128' in torch.__version__, torch.__version__"
-          pip install --no-cache-dir dist/cumm_cu128-*.whl dist/spconv_cu128-*.whl
+          pip install --no-cache-dir --only-binary :all: torch ${{ matrix.pipargs }}
+          python -c "import torch; assert torch.version.cuda.startswith('${{ matrix.wantcuda }}'), torch.__version__"
+          pip install --no-cache-dir dist/cumm_cu*.whl dist/spconv_cu*.whl
       - name: Import and construct (clean env, old libstdc++)
         run: |
           python - <<'EOF'
-          import torch  # must come first: provides libcudart/libnvrtc 12.8
+          import torch  # must come first: provides libcudart/libnvrtc
           import spconv.pytorch as spconv
           import spconv as s
           from spconv.core_cc.csrc.sparse.all import SpconvOps
